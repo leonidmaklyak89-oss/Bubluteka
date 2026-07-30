@@ -1,52 +1,33 @@
 import os
-import logging
-from aiogram import Bot, Dispatcher, types
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
+import flask
+from telebot import TeleBot, types
 
-# Включаем логирование, чтобы видеть ошибки в панели Render
-logging.basicConfig(level=logging.INFO)
-
-# Получаем настройки из скрытых переменных хостинга
 TOKEN = os.getenv("BOT_TOKEN")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL") 
-WEBHOOK_PATH = f"/webhook/{TOKEN}"
-WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 
-bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
-dp = Dispatcher()
+bot = TeleBot(TOKEN, threaded=False)
+app = flask.Flask(__name__)
 
-# Ответ на команду /start
-@dp.message(CommandStart())
-async def command_start_handler(message: types.Message) -> None:
-    await message.answer(
-        f"Привет, {message.from_user.full_name}!\n"
-        f"Этот бот создан для заработка и успешно работает на Render! 🚀"
-    )
+@bot.message_handler(commands=['start'])
+def command_start(message):
+    bot.reply_to(message, f"Привет, {message.from_user.first_name}!\nБот на telebot успешно работает на Render! 🚀")
 
-# Эхо-режим: бот повторяет текст (для проверки работоспособности)
-@dp.message()
-async def echo_handler(message: types.Message) -> None:
-    await message.answer(f" Код проверен. Получено сообщение: {message.text}")
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    bot.reply_to(message, f"Код проверен. Получено: {message.text}")
 
-# Настройка вебхука при запуске
-async def on_startup(bot: Bot) -> None:
-    await bot.set_webhook(url=WEBHOOK_URL)
-
-def main():
-    dp.startup.register(on_startup)
-    app = web.Application()
-    
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_requests_handler.register(app, path=WEBHOOK_PATH)
-    
-    setup_application(app, dp, bot=bot)
-    
-    # Render автоматически передает нужный порт в переменную PORT
-    port = int(os.getenv("PORT", 10000))
-    web.run_app(app, host="0.0.0.0", port=port)
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    if flask.request.headers.get('content-type') == 'application/json':
+        json_string = flask.request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        flask.abort(403)
 
 if __name__ == "__main__":
-    main()
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
