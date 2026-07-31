@@ -11,14 +11,19 @@ ADMIN_ID = 7496178917
 bot = TeleBot(TOKEN, threaded=False)
 app = flask.Flask(__name__)
 
-# Временное хранилище цен в оперативной памяти (сбросится при перезапуске сервера Render)
+# Переменные в памяти (сбрасываются при перезапуске сервера Render)
 prices = {
     "scripts": 450,
     "bots": 1500,
     "parsers": 2000
 }
 
-# Состояния для изменения цен
+# Динамический юзернейм админа поддержки (по умолчанию твой)
+settings = {
+    "support_admin": "@TEAMONSTORS"
+}
+
+# Состояния для изменений
 user_states = {}
 
 # Функция для создания главного меню с кнопками
@@ -31,22 +36,24 @@ def get_main_keyboard(user_id):
     markup.row(btn_price, btn_dev)
     markup.row(btn_support)
     
-    # Сверка ID: кнопка админки отобразится только на вашем устройстве
+    # Сверка ID: кнопка админки отобразится только на твоем устройстве
     if user_id == ADMIN_ID:
         btn_admin = types.KeyboardButton("⚙️ Админ-панель")
         markup.row(btn_admin)
         
     return markup
 
-# Меню управления ценами для админа
+# Меню админки с новой кнопкой смены юзернейма
 def get_admin_keyboard():
     markup = types.InlineKeyboardMarkup()
     btn_edit_scripts = types.InlineKeyboardButton("Редактировать 'Скрипты'", callback_data="edit_scripts")
     btn_edit_bots = types.InlineKeyboardButton("Редактировать 'Боты'", callback_data="edit_bots")
     btn_edit_parsers = types.InlineKeyboardButton("Редактировать 'Парсеры'", callback_data="edit_parsers")
+    btn_edit_admin = types.InlineKeyboardButton("👤 Изменить админа поддержки", callback_data="edit_support_admin")
     markup.add(btn_edit_scripts)
     markup.add(btn_edit_bots)
     markup.add(btn_edit_parsers)
+    markup.add(btn_edit_admin) # Добавили кнопку в меню
     return markup
 
 # Ответ на команду /start
@@ -64,16 +71,31 @@ def command_start(message):
 def handle_messages(message):
     user_id = message.from_user.id
     
-    # Проверяем, находится ли админ в процессе изменения цены
+    # Проверяем, находится ли админ в процессе изменения данных
     if user_id == ADMIN_ID and user_id in user_states:
-        category = user_states[user_id]
-        if message.text.isdigit():
-            prices[category] = int(message.text)
+        state = user_states[user_id]
+        
+        # Если меняем юзернейм админа поддержки
+        if state == "support_admin":
+            new_username = message.text.strip()
+            # Автоматически добавляем @, если пользователь забыл его ввести
+            if not new_username.startswith("@"):
+                new_username = "@" + new_username
+                
+            settings["support_admin"] = new_username
             del user_states[user_id]
-            bot.send_message(user_id, f"✅ Цена успешно изменена!", reply_markup=get_main_keyboard(user_id))
+            bot.send_message(user_id, f"✅ Юзернейм админа поддержки изменен на <b>{new_username}</b>!", reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+            return
+            
+        # Если меняем цены
         else:
-            bot.send_message(user_id, "❌ Пожалуйста, введите только число (например: 500).")
-        return
+            if message.text.isdigit():
+                prices[state] = int(message.text)
+                del user_states[user_id]
+                bot.send_message(user_id, f"✅ Цена успешно изменена!", reply_markup=get_main_keyboard(user_id))
+            else:
+                bot.send_message(user_id, "❌ Пожалуйста, введите только число (например: 500).")
+            return
 
     # Стандартная логика кнопок
     if message.text == "💰 Прайс-лист":
@@ -96,23 +118,25 @@ def handle_messages(message):
         bot.send_message(message.chat.id, dev_text)
 
     elif message.text == "👨‍💻 Поддержка":
+        # 📌 Теперь юзернейм берется динамически из переменной settings["support_admin"]
         support_text = (
             "📌 <b>Информация по тех. поддержке:</b>\n\n"
-            "👉 @TEAMONSTOR — <b>Администратор</b>. Все вопросы по нерабочим кодам и т.д. к нему.\n"
+            f"👉 {settings['support_admin']} — <b>Администратор</b>. Все вопросы по нерабочим кодам и техническим проблемам направляйте ему.\n"
             "Отвечает в течение 1 дня точно.\n\n"
-            "⚠️ Если администратор не отвечает больше 1 дня, пишите <b>владельцу</b>, он точно ответит!"
+            "⚠️ Если администратор не отвечает больше 1 дня, пишите <b>владельцу</b>, он точно разберется и ответит!"
         )
         bot.send_message(message.chat.id, support_text, parse_mode="HTML")
         
     elif message.text == "⚙️ Админ-панель" and user_id == ADMIN_ID:
         bot.send_message(
             user_id, 
-            f"⚙️ <b>Панель управления ценами</b>\n\n"
-            f"Текущие цены в боте:\n"
+            f"⚙️ <b>Панель управления ботом</b>\n\n"
+            f"Текущие цены:\n"
             f"• Скрипты: {prices['scripts']} руб.\n"
             f"• Боты: {prices['bots']} руб.\n"
             f"• Парсеры: {prices['parsers']} руб.\n\n"
-            f"Выберите категорию для изменения:", 
+            f"Текущий админ поддержки: {settings['support_admin']}\n\n"
+            f"Выберите действие:", 
             reply_markup=get_admin_keyboard(),
             parse_mode="HTML"
         )
@@ -139,6 +163,9 @@ def callback_inline(call):
     elif call.data == "edit_parsers":
         user_states[ADMIN_ID] = "parsers"
         bot.send_message(ADMIN_ID, "Введите новую минимальную цену для <b>Парсеров</b> (только число):", parse_mode="HTML")
+    elif call.data == "edit_support_admin":
+        user_states[ADMIN_ID] = "support_admin"
+        bot.send_message(ADMIN_ID, "Отправьте новый юзернейм для тех. поддержки (например: <code>@new_admin_username</code>):", parse_mode="HTML")
         
     bot.answer_callback_query(call.id)
 
@@ -158,3 +185,4 @@ if __name__ == "__main__":
     
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    
