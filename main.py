@@ -20,25 +20,27 @@ def get_main_keyboard():
 @bot.message_handler(commands=['start'])
 def command_start(message):
     welcome_text = (
-        f"Привет, {message.from_user.first_name}! 👋\n\n"
+        f"Привет, <b>{message.from_user.first_name}</b>! 👋\n\n"
         f"Добро пожаловать в бот по заказу IT-кодов.\n"
         f"Используй меню ниже, чтобы узнать цены или связаться со мной!"
     )
-    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
+    # Используем HTML-разметку для жирного шрифта в имени
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard(), parse_mode="HTML")
 
 # Обработка текстовых кнопок
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     if message.text == "💰 Прайс-лист":
         price_text = (
-            "💰 **Ориентировочная цена работы:**\n"
+            "💰 <b>Ориентировочная цена работы:</b>\n"
             "• Простые скрипты: от 450 руб.\n"
             "• Telegram-боты: от 1500 руб.\n"
             "• Парсеры и автоматизация: от 2000 руб.\n\n"
-            "⚠️ **Внимание:** итоговая стоимость может измениться в зависимости "
+            "⚠️ <b>Внимание:</b> итоговая стоимость может измениться в зависимости "
             "от ваших личных предпочтений, сложности и деталей задания."
         )
-        bot.send_message(message.chat.id, price_text, parse_mode="Markdown")
+        # Переключено на HTML, теперь теги <b> работают без багов со спецсимволами
+        bot.send_message(message.chat.id, price_text, parse_mode="HTML")
         
     elif message.text == "💬 Написать разработчику":
         dev_text = (
@@ -49,7 +51,6 @@ def handle_messages(message):
         bot.send_message(message.chat.id, dev_text)
         
     else:
-        # Если пользователь ввел что-то другое, просто напоминаем про меню
         bot.send_message(
             message.chat.id, 
             "Пожалуйста, используйте кнопки в меню ниже 👇", 
@@ -67,8 +68,11 @@ def webhook():
         flask.abort(403)
 
 if __name__ == "__main__":
+    # Сначала удаляем старый вебхук перед установкой нового
     bot.remove_webhook()
     bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
+    
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    
     
